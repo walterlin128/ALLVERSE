@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#10152d">
+<title>ALLVERSE｜萬物戰場</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#10152d;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif;touch-action:none}
+#game{display:block;width:100vw;height:100dvh;background:radial-gradient(ellipse at center,#202d50,#10152d 75%)}
+.hud{position:fixed;top:0;left:0;right:0;padding:env(safe-area-inset-top) 12px 8px;display:flex;justify-content:space-between;gap:8px;pointer-events:none;text-shadow:0 2px 6px #000}
+.pill{background:#10182dcc;border:1px solid #ffffff22;border-radius:14px;padding:7px 11px;font-size:13px}
+#bottom{position:fixed;bottom:calc(12px + env(safe-area-inset-bottom));left:12px;right:12px;display:flex;justify-content:space-between;align-items:end;pointer-events:none}
+#bottom button,.panel button{pointer-events:auto;border:1px solid #ffffff30;background:#26365e;color:#fff;border-radius:14px;padding:12px 15px;font-weight:700;font-size:14px}
+#bottom button:active,.panel button:active{transform:scale(.97)}
+#hint{font-size:11px;color:#c5d2f3;text-align:center;max-width:42%;text-shadow:0 2px 5px #000}
+#overlay{position:fixed;inset:0;background:#080d1bdc;display:flex;align-items:center;justify-content:center;padding:18px}
+.panel{width:min(440px,100%);max-height:88dvh;overflow:auto;background:linear-gradient(160deg,#24345b,#151d38);border:1px solid #ffffff30;border-radius:22px;padding:20px;box-shadow:0 20px 80px #0009}
+h1{font-size:27px;margin:0 0 4px}h2{font-size:20px;margin:0 0 12px}.muted{color:#b7c5e8;font-size:13px;line-height:1.5}
+.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin:14px 0}
+.card{border:1px solid #ffffff30;border-radius:14px;padding:12px;background:#ffffff0b;min-height:94px}
+.card strong{display:block;margin:5px 0}.rarity{font-size:11px;color:#ffd479}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.actions button{flex:1}
+.hidden{display:none!important}
+#toast{position:fixed;top:72px;left:50%;transform:translateX(-50%);background:#172342eF;border:1px solid #ffffff30;border-radius:20px;padding:9px 14px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
+</style></head>
+<body>
+<canvas id="game"></canvas>
+<div class="hud"><div class="pill">🌌 ALLVERSE <span id="wave">第 1 波</span></div><div class="pill">❤ <span id="hp">100</span>　✦ <span id="gold">0</span></div><div class="pill">擊倒 <span id="kills">0</span></div></div>
+<div id="bottom"><button id="summon">🎴 抽卡</button><div id="hint">拖曳螢幕移動・角色會自動攻擊</div><button id="collection">📚 卡庫</button></div>
+<div id="toast"></div>
+<div id="overlay"><div class="panel" id="menu">
+<h1>ALLVERSE</h1><div class="muted">萬物戰場・抽卡割草生存戰</div>
+<p>操控你的角色在敵潮中生存，收集經驗升級。所有召喚都使用遊戲內金幣，不涉及เงินจริง。</p>
+<div class="cards">
+<div class="card">🌀 <strong>自動割草</strong><span class="muted">環繞能量球自動攻擊敵人</span></div>
+<div class="card">🎴 <strong>萬物抽卡</strong><span class="muted">角色、生物、自然與物品</span></div>
+<div class="card">⬆️ <strong>戰鬥升級</strong><span class="muted">升級攻擊、速度與生命</span></div>
+<div class="card">💾 <strong>自動存檔</strong><span class="muted">卡片與金幣保存在本機</span></div>
+</div><button id="start" style="width:100%;background:#6655c9">開始遊戲</button>
+<div class="muted" style="margin-top:12px">手機：手指在畫面上拖曳移動。電腦：WASD / 方向鍵。</div>
+</div></div>
+<script>
+const canvas=document.querySelector('#game'),ctx=canvas.getContext('2d');
+let W,H,dpr,player,enemies=[],orbs=[],gems=[],particles=[],last=0,spawn=0,gameOn=false,paused=false;
+let state={wave:1,hp:100,maxHp:100,xp:0,level:1,gold:0,kills:0,damage:18,speed:205,orbit:1,range:105,cards:[{name:'星光史萊姆',emoji:'🟢',rarity:'N',level:1,power:1}],equipped:0};
+const pool=[
+['皮卡丘','⚡','SR'],['霸王龍','🦖','R'],['黑洞','🌌','UR'],['孫悟空','🐉','SSR'],['鑽石','💎','R'],['終極陀螺','🌀','SR'],['機器人','🤖','R'],['雷電','🌩️','SSR'],['史萊姆','🟢','N'],['宇宙飛船','🚀','SR'],['鯊魚','🦈','R'],['太陽','☀️','UR'],['瑪利歐','🍄','SR'],['巨型蜘蛛','🕷️','R'],['隕石','☄️','SSR'],['月亮','🌙','SR'],['鳳凰','🔥','SSR'],['量子核心','🔮','LR'],['冰龍','🐲','UR'],['音速跑車','🏎️','R']
+];
+const colors={N:'#aeb8ca',R:'#45cf8c',SR:'#54a7ff',SSR:'#c18aff',UR:'#ffbf58',LR:'#ff6eaa'};
+function save(){try{localStorage.setItem('allverse-save',JSON.stringify(state))}catch(e){}}
+function load(){try{let s=JSON.parse(localStorage.getItem('allverse-save'));if(s)state={...state,...s}}catch(e){}}
+load();
+function resize(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;canvas.width=W*dpr;canvas.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);if(player){player.x=Math.min(W-20,Math.max(20,player.x));player.y=Math.min(H-20,Math.max(20,player.y))}}
+addEventListener('resize',resize);resize();
+player={x:W/2,y:H/2,r:15,tx:W/2,ty:H/2,inv:0};
+let pointer=null;
+canvas.addEventListener('pointerdown',e=>{if(!gameOn||paused)return;pointer=e.pointerId;player.tx=e.clientX;player.ty=e.clientY;canvas.setPointerCapture(pointer)});
+canvas.addEventListener('pointermove',e=>{if(pointer===e.pointerId){player.tx=e.clientX;player.ty=e.clientY}});
+canvas.addEventListener('pointerup',e=>{if(pointer===e.pointerId)pointer=null});
+let keys={};addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+function toast(t){let el=document.querySelector('#toast');el.textContent=t;el.style.opacity=1;clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.style.opacity=0,1500)}
+function sync(){document.querySelector('#wave').textContent='第 '+state.wave+' 波';document.querySelector('#hp').textContent=Math.ceil(state.hp);document.querySelector('#gold').textContent=state.gold;document.querySelector('#kills').textContent=state.kills}
+function start(){document.querySelector('#overlay').classList.add('hidden');gameOn=true;paused=false;player.x=W/2;player.y=H/2;player.tx=player.x;player.ty=player.y;last=performance.now();requestAnimationFrame(loop)}
+document.querySelector('#start').onclick=start;
+function enemySpawn(){let side=Math.floor(Math.random()*4),x=side===0?-20:side===1?W+20:Math.random()*W,y=side===2?-20:side===3?H+20:Math.random()*H;let boss=state.wave%5===0&&Math.random()<.13;enemies.push({x,y,r:boss?22:11+Math.random()*5,hp:boss?180+state.wave*25:24+state.wave*5,speed:boss?40:48+Math.random()*25,boss})}
+function burst(x,y,color){for(let i=0;i<7;i++)particles.push({x,y,vx:(Math.random()-.5)*170,vy:(Math.random()-.5)*170,t:.35,color})}
+function update(dt){if(!gameOn||paused)return;
+let dx=player.tx-player.x,dy=player.ty-player.y;
+if(keys.w||keys.arrowup)dy=-1;if(keys.s||keys.arrowdown)dy=1;if(keys.a||keys.arrowleft)dx=-1;if(keys.d||keys.arrowright)dx=1;
+let len=Math.hypot(dx,dy);if(len>1){dx/=len;dy/=len}
+player.x+=dx*state.speed*dt;player.y+=dy*state.speed*dt;player.x=Math.max(16,Math.min(W-16,player.x));player.y=Math.max(55,Math.min(H-22,player.y));
+spawn-=dt;if(spawn<=0){enemySpawn();spawn=Math.max(.18,.8-state.wave*.025)}
+let t=performance.now()/1000;
+for(let i=enemies.length-1;i>=0;i--){let e=enemies[i],a=Math.atan2(player.y-e.y,player.x-e.x);e.x+=Math.cos(a)*e.speed*dt;e.y+=Math.sin(a)*e.speed*dt;
+if(Math.hypot(e.x-player.x,e.y-player.y)<e.r+player.r){state.hp-= (e.boss?22:12)*dt;if(state.hp<=0){state.hp=0;endGame()}}
+}
+for(let i=enemies.length-1;i>=0;i--){let e=enemies[i];let hit=false;for(let j=0;j<state.orbit;j++){let a=t*2.8+j*Math.PI*2/state.orbit,ox=player.x+Math.cos(a)*state.range,oy=player.y+Math.sin(a)*state.range;if(Math.hypot(e.x-ox,e.y-oy)<e.r+10){e.hp-=state.damage*dt*3;hit=true;if(Math.random()<.07)burst(e.x,e.y,'#8feaff')}}if(e.hp<=0){state.kills++;state.gold+=e.boss?35:3;gems.push({x:e.x,y:e.y});burst(e.x,e.y,e.boss?'#ffb45b':'#9eeaff');enemies.splice(i,1)}}
+for(let i=gems.length-1;i>=0;i--){let g=gems[i],d=Math.hypot(g.x-player.x,g.y-player.y);if(d<state.range+30){g.x+=(player.x-g.x)*dt*2.4;g.y+=(player.y-g.y)*dt*2.4}if(d<player.r+14){state.xp+=1;gems.splice(i,1);if(state.xp>=12+(state.level-1)*5)levelUp()}}
+particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.t-=dt});particles=particles.filter(p=>p.t>0);
+if(state.kills>=state.wave*18){state.wave++;state.hp=Math.min(state.maxHp,state.hp+12);toast('進入第 '+state.wave+' 波！生命恢復');}
+sync();save();
+}
+function draw(){ctx.clearRect(0,0,W,H);
+ctx.strokeStyle='#ffffff0b';ctx.lineWidth=1;for(let x=0;x<W;x+=42){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}for(let y=0;y<H;y+=42){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+let t=performance.now()/1000;
+ctx.beginPath();ctx.arc(player.x,player.y,state.range,0,Math.PI*2);ctx.strokeStyle='#79baff18';ctx.stroke();
+for(let i=0;i<state.orbit;i++){let a=t*2.8+i*Math.PI*2/state.orbit,x=player.x+Math.cos(a)*state.range,y=player.y+Math.sin(a)*state.range;ctx.shadowBlur=18;ctx.shadowColor='#70eaff';ctx.fillStyle='#a8f3ff';ctx.beginPath();ctx.arc(x,y,9,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0}
+ctx.fillStyle='#f4f7ff';ctx.shadowBlur=20;ctx.shadowColor='#7d9cff';ctx.beginPath();ctx.arc(player.x,player.y,player.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.font='20px sans-serif';ctx.textAlign='center';ctx.fillText(state.cards[state.equipped]?.emoji||'✨',player.x,player.y+7);
+enemies.forEach(e=>{ctx.fillStyle=e.boss?'#ff795f':'#e56d8a';ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff';ctx.font=e.boss?'20px sans-serif':'14px sans-serif';ctx.fillText(e.boss?'👹':'👾',e.x,e.y+5);ctx.fillStyle='#331b2a';ctx.fillRect(e.x-14,e.y-e.r-9,28,3);ctx.fillStyle='#ffbd80';ctx.fillRect(e.x-14,e.y-e.r-9,28*Math.max(0,e.hp/(e.boss?180+state.wave*25:24+state.wave*5)),3)});
+gems.forEach(g=>{ctx.fillStyle='#7ef5cb';ctx.beginPath();ctx.arc(g.x,g.y,4,0,7);ctx.fill()});
+particles.forEach(p=>{ctx.globalAlpha=Math.max(0,p.t/.35);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,3,3)});ctx.globalAlpha=1;
+ctx.fillStyle='#ffffffbb';ctx.font='12px sans-serif';ctx.fillText('LV.'+state.level+'  EXP '+state.xp+'/'+(12+(state.level-1)*5),W/2,62);
+}
+function loop(now){if(!gameOn)return;let dt=Math.min(.033,(now-last)/1000);last=now;update(dt);draw();if(gameOn)requestAnimationFrame(loop)}
+function levelUp(){state.xp=0;state.level++;paused=true;let choices=[['⚡','攻擊強化','攻擊力 +8',()=>state.damage+=8],['🌀','增加能量球','多一顆環繞能量球',()=>state.orbit=Math.min(6,state.orbit+1)],['💨','移動強化','移動速度 +25',()=>state.speed+=25],['💚','生命恢復','恢復 35 點生命',()=>state.hp=Math.min(state.maxHp,state.hp+35)]].sort(()=>Math.random()-.5).slice(0,3);showChoices(choices)}
+function showChoices(choices){let p=document.createElement('div');p.className='panel';p.innerHTML='<h2>⬆️ 升級！選擇一項強化</h2><div class="muted">每次升級都能讓你變得更強。</div><div class="cards"></div>';let c=p.querySelector('.cards');choices.forEach(ch=>{let b=document.createElement('button');b.className='card';b.innerHTML='<strong>'+ch[0]+' '+ch[1]+'</strong><span class="muted">'+ch[2]+'</span>';b.onclick=()=>{ch[3]();document.querySelector('#overlay').classList.add('hidden');paused=false;last=performance.now();requestAnimationFrame(loop);};c.appendChild(b)});openPanel(p)}
+function openPanel(node){let o=document.querySelector('#overlay');o.innerHTML='';o.appendChild(node);o.classList.remove('hidden')}
+function closePanel(){let o=document.querySelector('#overlay');o.innerHTML='<div class="panel" id="menu"><h2>遊戲暫停</h2><p class="muted">準備好就繼續戰鬥！</p><button id="resume" style="width:100%">繼續遊戲</button></div>';o.classList.remove('hidden');document.querySelector('#resume').onclick=()=>{o.classList.add('hidden');paused=false;last=performance.now();requestAnimationFrame(loop)}}
+function summon(){if(state.gold<30){toast('金幣不足！擊倒敵人可獲得金幣');return}state.gold-=30;let r=Math.random(),rarity=r<.015?'LR':r<.06?'UR':r<.2?'SSR':r<.48?'SR':r<.78?'R':'N';let options=pool.filter(x=>x[2]===rarity);if(!options.length)options=pool;let item=options[Math.floor(Math.random()*options.length)],idx=state.cards.findIndex(c=>c.name===item[0]);if(idx>=0){state.cards[idx].level++;state.cards[idx].power+=1;toast('重複卡片！'+item[0]+' 升至 Lv.'+state.cards[idx].level)}else{state.cards.push({name:item[0],emoji:item[1],rarity:item[2],level:1,power:1});toast('抽到 '+rarity+' 卡：'+item[0]+'！')}save();sync()}
+function showCollection(){paused=true;let p=document.createElement('div');p.className='panel';p.innerHTML='<h2>📚 萬物卡庫</h2><div class="muted">金幣：'+state.gold+'　｜　抽卡：30 金幣 / 次</div><div class="cards"></div><div class="actions"><button id="pull">🎴 抽一張卡</button><button id="back">返回戰場</button></div>';let c=p.querySelector('.cards');state.cards.forEach((card,i)=>{let d=document.createElement('div');d.className='card';d.style.borderColor=colors[card.rarity];d.innerHTML='<span class="rarity">'+card.rarity+' 級</span><strong>'+card.emoji+' '+card.name+'</strong><span class="muted">Lv.'+card.level+'　戰力 '+card.power+'</span>';d.onclick=()=>{state.equipped=i;toast('已選擇 '+card.name);save()};c.appendChild(d)});p.querySelector('#pull').onclick=()=>{summon();p.querySelector('.muted').textContent='金幣：'+state.gold+'　｜　抽卡：30 金幣 / 次';};p.querySelector('#back').onclick=()=>{document.querySelector('#overlay').classList.add('hidden');paused=false;last=performance.now();requestAnimationFrame(loop)};openPanel(p)}
+document.querySelector('#summon').onclick=()=>{if(!gameOn)return;summon()};document.querySelector('#collection').onclick=()=>{if(gameOn)showCollection()};
+function endGame(){gameOn=false;paused=true;let p=document.createElement('div');p.className='panel';p.innerHTML='<h2>本次挑戰結束</h2><p class="muted">抵達第 '+state.wave+' 波　｜　擊倒 '+state.kills+' 隻敵人</p><button id="again" style="width:100%">再挑戰一次</button><button id="reset" style="width:100%;margin-top:8px">重新開始新存檔</button>';openPanel(p);p.querySelector('#again').onclick=()=>{state.hp=state.maxHp;enemies=[];gems=[];state.wave=1;state.kills=0;state.xp=0;start()};p.querySelector('#reset').onclick=()=>{localStorage.removeItem('allverse-save');location.reload()};save()}
+sync();
+</script></body></html>
